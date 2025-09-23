@@ -151,7 +151,12 @@ def load_dataset(
 ) -> tuple[sbg.GenericGenerator, DataLoader, BenchmarkDataset]:
 
     # Load ETHZ @100Hz for sampling rate and use defined training splits
+    # NOTE: These dataset are located in ~/.seisbench for transfer or removal
+
     data = sbd.ETHZ(sampling_rate=100)  # if gots memory for it use cache="trace"
+    # data = sbd.MLAAPDE(sampling_rate=100)
+    # data = sbd.GEOFON(sampling_rate=100, force=True)
+
     train, dev, test = data.train_dev_test()
 
     # Dataloader params
@@ -215,10 +220,22 @@ if __name__ == "__main__":
     axs = fig.subplots(
         3, 1, sharex=True, gridspec_kw={"hspace": 0.2, "height_ratios": [3, 1, 1]}
     )
-    axs[0].plot(sample["X"].T)
+    # Plot Z, N, E waveforms
+    channel_names = ["Z", "N", "E"]
+    for i in range(sample["X"].shape[0]):
+        axs[0].plot(sample["X"][i], label=channel_names[i])
     axs[0].set_ylabel("Waveform")
-    axs[1].plot(sample["y"].T)
+    axs[0].legend()
+
+    # Plot P, S, Noise phase labels
+    phase_names = ["P", "S", "Noise"]
+    colors = ["tab:blue", "tab:green", "tab:orange"]
+    for i in range(sample["y"].shape[0]):
+        axs[1].plot(sample["y"][i], label=phase_names[i], color=colors[i])
     axs[1].set_ylabel("Phase Label")
+    axs[1].legend()
+
+    # Plot magnitude label
     if "magnitude" in sample:
         mag_data = sample["magnitude"]
         axs[2].plot(mag_data, color="tab:orange")
@@ -227,7 +244,7 @@ if __name__ == "__main__":
         axs[2].text(0.5, 0.5, "No magnitude label", ha="center", va="center")
     axs[2].set_xlabel("Sample Index")
 
-    # plot_magnitude_distribution(data)
-    # dump_metadata_to_csv(data, "ETHZ_metadata.csv")
+    plot_magnitude_distribution(data)
+    # dump_metadata_to_csv(data, "MLAAPDE_metadata.csv")
 
     plt.show()
