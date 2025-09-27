@@ -121,6 +121,40 @@ class MagnitudeLabeller(SupervisedLabeller):
         return label
 
 
+
+
+class CosineTaper:
+    """
+    Symmetric cosine (Hann-like) taper applied along the last axis (time).
+    Multiplies the beginning and end of each trace by a smooth ramp of length N.
+    """
+    def __init__(self, N: int = 100, key="X"):
+        self.N = N
+        if isinstance(key, str):
+            self.key = (key, key)
+        else:
+            self.key = key
+
+    def __call__(self, state_dict):
+        import numpy as np
+        x, metadata = state_dict[self.key[0]]
+        def _taper_one(arr):
+            T = arr.shape[-1]
+            N = min(self.N, max(0, T // 2))
+            if N <= 0:
+                return arr
+            # Build symmetric taper vector
+            n = np.arange(N, dtype=np.float32)
+            w = np.ones(T, dtype=np.float32)
+            ramp = 0.5 - 0.5 * np.cos(np.pi * (n / N))
+            w[:N] = ramp
+            w[-N:] = ramp[::-1]
+            return arr * w  # broadcast across channel axis
+        if isinstance(x, list):
+            x = [_taper_one(xx) for xx in x]
+        else:
+            x = _taper_one(x)
+        state_dict[self.key[1]] = (x, metadata)
 def get_augmentation(model: WaveformModel):
     """Define training and validation generator with the following augmentations:
 
@@ -130,19 +164,24 @@ def get_augmentation(model: WaveformModel):
     - Probablistic label
     """
     augmentations = [
-        sbg.WindowAroundSample(
-            list(phase_dict.keys()),
-            samples_before=3000,
-            windowlen=6000,
-            selection="random",
-            strategy="variable",
-        ),
-        sbg.RandomWindow(windowlen=3001, strategy="pad"),
-        sbg.ChangeDtype(np.float32),
-        sbg.ProbabilisticLabeller(
-            label_columns=phase_dict, model_labels=model.labels, sigma=30, dim=0
-        ),
-    ]
+    # Window a long segment around the first available pick
+    sbg.WindowAroundSample(
+        list(phase_dict.keys()),
+        samples_before=3000,
+        windowlen=6000,
+        selection="random",
+        strategy="variable",
+    ),
+    # Choose a fixed-length model window (Phasenet length here); pad if needed
+    sbg.RandomWindow(windowlen=3001, strategy="pad"),
+    # === Added preprocessing to mirror AMAG scripts ===
+    CosineTaper(N=100),  # smooth edges
+    sbg.Filter(N=2, Wn=[1.0, 20.0], btype="bandpass", forward_backward=True, axis=-1, key="X"),
+    # ================================================
+    sbg.ChangeDtype(np.float32),
+    sbg.ProbabilisticLabeller(label_columns=phase_dict, model_labels=model.labels, sigma=30, dim=0),
+]
+
     return augmentations
 
 

@@ -3,7 +3,8 @@ import seisbench.data as sbd
 import os
 import matplotlib.pyplot as plt
 
-data = sbd.DummyDataset()
+seisbench.use_backup_repository()
+data = sbd.ETHZ(sampling_rate=100)
 print(data)
 
 print("Cache root:", seisbench.cache_root)
