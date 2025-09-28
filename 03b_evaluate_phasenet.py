@@ -5,7 +5,7 @@ import torch
 from tqdm import tqdm
 import numpy as np
 
-import loaders.ETHZ_loader as ETHZ
+from loaders import ETHZ_loader as ETHZ
 
 
 import argparse

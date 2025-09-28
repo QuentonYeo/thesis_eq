@@ -115,9 +115,9 @@ class MagnitudeLabeller(SupervisedLabeller):
         if onset is not None and onset < length:
             label[onset:] = mag
         # Debug print
-        print(
-            f"[MagnitudeLabeller] mag: {mag}, onset: {onset}, label (nonzero count): {np.count_nonzero(label)}, label (unique): {np.unique(label)}"
-        )
+        # print(
+        #     f"[MagnitudeLabeller] mag: {mag}, onset: {onset}, label (nonzero count): {np.count_nonzero(label)}, label (unique): {np.unique(label)}"
+        # )
         return label
 
 
@@ -153,8 +153,10 @@ def load_dataset(
     # Load ETHZ @100Hz for sampling rate and use defined training splits
     # NOTE: These dataset are located in ~/.seisbench for transfer or removal
 
-    # data = sbd.ETHZ(sampling_rate=100)  # if gots memory for it use cache="trace" if need to redownload use force=True
-    data = sbd.MLAAPDE(sampling_rate=100, force=True)
+    data = sbd.ETHZ(
+        sampling_rate=100
+    )  # if gots memory for it use cache="trace" if need to redownload use force=True
+    # data = sbd.MLAAPDE(sampling_rate=100, force=True)
     # data = sbd.GEOFON(sampling_rate=100)
 
     train, dev, test = data.train_dev_test()

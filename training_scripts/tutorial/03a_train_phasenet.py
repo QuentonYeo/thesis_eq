@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 import torch
 
-import loaders.ETHZ_loader as ETHZ
+from loaders import ETHZ_loader as ETHZ
 
 if __name__ == "__main__":
     # Load standard Phasenet
