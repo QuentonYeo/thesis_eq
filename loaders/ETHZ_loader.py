@@ -146,6 +146,90 @@ def get_augmentation(model: WaveformModel):
     return augmentations
 
 
+class EQTransformerLabeller(SupervisedLabeller):
+    """
+    Custom labeller for EQTransformer that creates Detection, P, and S labels
+    without the automatic Noise channel that ProbabilisticLabeller adds.
+    """
+
+    def __init__(self, phase_dict, sigma=30, key=("X", "y")):
+        super().__init__(label_type="multi_label", dim=0, key=key)
+        self.phase_dict = phase_dict
+        self.sigma = sigma
+        self.label_columns = list(phase_dict.keys())
+
+    def label(self, X, metadata):
+        length = X.shape[-1]
+
+        # Initialize arrays for Detection, P, S
+        detection = np.zeros(length, dtype=np.float32)
+        p_phase = np.zeros(length, dtype=np.float32)
+        s_phase = np.zeros(length, dtype=np.float32)
+
+        # Process each phase pick
+        for pick_key, phase_type in self.phase_dict.items():
+            pick_sample = metadata.get(pick_key, np.nan)
+            if not np.isnan(pick_sample) and 0 <= pick_sample < length:
+                pick_sample = int(pick_sample)
+
+                # Create gaussian around the pick
+                samples = np.arange(length, dtype=np.float32)
+                gaussian = np.exp(-0.5 * ((samples - pick_sample) / self.sigma) ** 2)
+
+                # Add to appropriate channel
+                if phase_type == "P":
+                    p_phase += gaussian
+                    detection += gaussian  # P picks contribute to detection
+                elif phase_type == "S":
+                    s_phase += gaussian
+                    detection += gaussian  # S picks contribute to detection
+
+        # Clip values to [0, 1]
+        detection = np.clip(detection, 0, 1)
+        p_phase = np.clip(p_phase, 0, 1)
+        s_phase = np.clip(s_phase, 0, 1)
+
+        # Stack as [Detection, P, S]
+        y = np.stack([detection, p_phase, s_phase], axis=0)
+        return y
+
+
+def get_augmentation_eqt_custom(model):
+    """Custom augmentation for EQTransformer using our custom labeller"""
+
+    phase_dict = {
+        "trace_p_arrival_sample": "P",
+        "trace_pP_arrival_sample": "P",
+        "trace_P_arrival_sample": "P",
+        "trace_P1_arrival_sample": "P",
+        "trace_Pg_arrival_sample": "P",
+        "trace_Pn_arrival_sample": "P",
+        "trace_PmP_arrival_sample": "P",
+        "trace_pwP_arrival_sample": "P",
+        "trace_pwPm_arrival_sample": "P",
+        "trace_s_arrival_sample": "S",
+        "trace_S_arrival_sample": "S",
+        "trace_S1_arrival_sample": "S",
+        "trace_Sg_arrival_sample": "S",
+        "trace_SmS_arrival_sample": "S",
+        "trace_Sn_arrival_sample": "S",
+    }
+
+    augmentations = [
+        sbg.WindowAroundSample(
+            list(phase_dict.keys()),
+            samples_before=3000,
+            windowlen=9000,
+            selection="random",
+            strategy="variable",
+        ),
+        sbg.RandomWindow(windowlen=6000, strategy="pad"),
+        sbg.ChangeDtype(np.float32),
+        EQTransformerLabeller(phase_dict, sigma=30),
+    ]
+    return augmentations
+
+
 def load_dataset(
     model: WaveformModel, type: str
 ) -> tuple[sbg.GenericGenerator, DataLoader, BenchmarkDataset]:
@@ -178,6 +262,43 @@ def load_dataset(
     ds_generator = sbg.GenericGenerator(dataset)
     ds_generator.add_augmentations(get_augmentation(model))
     ds_generator.add_augmentations([MagnitudeLabeller()])
+
+    loader = DataLoader(
+        ds_generator,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        worker_init_fn=worker_seeding,
+    )
+
+    return ds_generator, loader, data
+
+
+def load_dataset_eqt(model: WaveformModel, type: str):
+    """Load dataset for EQTransformer using custom labeller"""
+
+    data = sbd.ETHZ(sampling_rate=100)
+    train, dev, test = data.train_dev_test()
+
+    batch_size = 256
+    num_workers = 4
+
+    if type == "train":
+        train.preload_waveforms()
+        dataset = train
+    elif type == "dev":
+        dev.preload_waveforms()
+        dataset = dev
+    else:
+        test.preload_waveforms()
+        dataset = test
+
+    ds_generator = sbg.GenericGenerator(dataset)
+    ds_generator.add_augmentations(get_augmentation_eqt_custom(model))
+
+    # Add magnitude labeller only if model has magnitude prediction
+    if hasattr(model, "predict_magnitude") and model.predict_magnitude:
+        ds_generator.add_augmentations([MagnitudeLabeller()])
 
     loader = DataLoader(
         ds_generator,

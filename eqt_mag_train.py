@@ -20,8 +20,8 @@ if __name__ == "__main__":
     )
     model.to_preferred_device(verbose=True)
 
-    train_generator, train_loader, _ = ETHZ.load_dataset(model, "train")
-    dev_generator, dev_loader, _ = ETHZ.load_dataset(model, "dev")
+    train_generator, train_loader, _ = ETHZ.load_dataset_eqt(model, "train")
+    dev_generator, dev_loader, _ = ETHZ.load_dataset_eqt(model, "dev")
 
     print("Data successfully loaded")
 
